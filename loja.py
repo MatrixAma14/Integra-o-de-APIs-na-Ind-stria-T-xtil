@@ -198,16 +198,41 @@ async def estado_sistema():
     return resultado
 
 @app.get("/stats", tags=["Sistema"])
-def estatisticas():
-    """Estatísticas do serviço da loja."""
+async def estatisticas():
+    """Estatísticas agregadas do sistema (encomendas, ordens de produção e alertas)."""
     por_estado = {}
     for e in encomendas:
         por_estado[e.estado] = por_estado.get(e.estado, 0) + 1
-    return {
-        "total_encomendas": len(encomendas),
-        "encomendas_por_estado": por_estado,
-        "ultima_encomenda": encomendas[-1] if encomendas else None,
+
+    resultado = {
+        "loja": {
+            "total_encomendas": len(encomendas),
+            "encomendas_por_estado": por_estado,
+            "ultima_encomenda": encomendas[-1] if encomendas else None,
+        },
+        "armazem": None,
+        "fabrica": None,
     }
+
+    # Agregar estatísticas do armazém (inclui alertas JIT)
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{ARMAZEM_URL}/stats")
+            if resp.status_code == 200:
+                resultado["armazem"] = resp.json()
+    except Exception:
+        resultado["armazem"] = {"erro": "Serviço do armazém indisponível"}
+
+    # Agregar estatísticas da fábrica (inclui ordens de produção)
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{FABRICA_URL}/stats")
+            if resp.status_code == 200:
+                resultado["fabrica"] = resp.json()
+    except Exception:
+        resultado["fabrica"] = {"erro": "Serviço da fábrica indisponível"}
+
+    return resultado
 
 if __name__ == "__main__":
     import uvicorn
